@@ -1,0 +1,77 @@
+/**
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model.  Users can only access their own data, and no listing of other users' data is allowed.
+ *
+ * Data Structure:
+ * All data is nested under `/users/{userId}`, ensuring that all collections and documents are owned by a specific user. User profiles are stored at `/users/{userId}/profile`, and chat messages are stored under `/users/{userId}/chat_messages/{messageId}`.
+ *
+ * Key Security Decisions:
+ * - No listing of the `/users` collection is allowed to protect user privacy.
+ * - The `id` field within each document under `/users/{userId}` MUST match the `userId` path segment to prevent unauthorized data creation or modification. This path-based ownership is strictly enforced.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Ensures the user is signed in to access any data.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the request is made by the owner of the resource.
+     * @param {string} userId The user ID to compare against the request's auth UID.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the request is made by the owner of the resource and the resource exists.
+     * @param {string} userId The user ID to compare against the request's auth UID.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Restricts access to user profiles.
+     * @path /users/{userId}/profile
+     * @allow (create) User 'test_user' with ID 'test_user' can create their profile.
+     * @deny (create) User 'test_user' cannot create a profile with a mismatched ID 'other_user'.
+     * @allow (get, update, delete) User 'test_user' can read, update, and delete their profile.
+     * @deny (get, update, delete) User 'other_user' cannot read, update, or delete 'test_user's profile.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/profile {
+      allow get: if isOwner(userId);
+      allow list: if false; // No listing of profiles
+
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id; // Immutable id field
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Restricts access to chat messages for a specific user.
+     * @path /users/{userId}/chat_messages/{messageId}
+     * @allow (create) User 'test_user' with ID 'test_user' can create a chat message under their ID.
+     * @deny (create) User 'test_user' cannot create a chat message under the ID of 'other_user'.
+     * @allow (get, list, update, delete) User 'test_user' can read, list, update, and delete messages under their ID.
+     * @deny (get, list, update, delete) User 'other_user' cannot read, list, update, or delete messages under the ID of 'test_user'.
+     * @principle Enforces document ownership for writes and restricts access to a user's own data tree.
+     */
+    match /users/{userId}/chat_messages/{messageId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) && request.resource.data.userProfileId == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.userProfileId == resource.data.userProfileId; // Immutable userProfileId field
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+}

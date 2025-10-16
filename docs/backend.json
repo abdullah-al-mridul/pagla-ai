@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user's profile information.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user profile."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL of the user's profile picture.",
+          "format": "uri"
+        },
+        "themePreference": {
+          "type": "string",
+          "description": "User's preferred theme (e.g., 'light', 'dark')."
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "email"
+      ]
+    },
+    "ChatMessage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChatMessage",
+      "type": "object",
+      "description": "Represents a single chat message.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the chat message."
+        },
+        "userProfileId": {
+          "type": "string",
+          "description": "Reference to UserProfile. (Relationship: UserProfile 1:N ChatMessage)"
+        },
+        "text": {
+          "type": "string",
+          "description": "The content of the chat message."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp of when the message was sent.",
+          "format": "date-time"
+        },
+        "isUserMessage": {
+          "type": "boolean",
+          "description": "Indicates if the message was sent by the user (true) or the AI (false)."
+        }
+      },
+      "required": [
+        "id",
+        "userProfileId",
+        "text",
+        "timestamp",
+        "isUserMessage"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous",
+      "google.com"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}/profile",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile information. Only the user can read/write their own profile data. This path enforces path-based ownership.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/chat_messages/{messageId}",
+        "definition": {
+          "entityName": "ChatMessage",
+          "schema": {
+            "$ref": "#/backend/entities/ChatMessage"
+          },
+          "description": "Stores chat messages for a specific user. Only the user can read/write messages under their user ID. This path enforces path-based ownership.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            },
+            {
+              "name": "messageId",
+              "description": "The unique identifier for the chat message."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure data security, scalability, and ease of debugging, in line with the defined principles.  User profiles are stored in a private collection (`/users/{userId}/profile`) using Path-Based ownership, aligning with the 'Private Data' access model. Chat messages are nested under user profiles (`/users/{userId}/chat_messages/{messageId}`). This direct nesting inherently enforces ownership. All messages within a user's collection are owned by that user. This eliminates the need for complex authorization logic or `get()` calls. This structure adheres to Authorization Independence (CRITICAL). The design also avoids mixing data with different security needs in the same collection, following the principle of Structural Segregation. Since all chat messages under a given user ID require the same security posture (access granted to that user), storing them in the same collection is appropriate.  This structure supports the QAPs because list operations on `/users/{userId}/chat_messages` are inherently secure, as only the authenticated user has access to their specific chat messages. This is achieved without using rules as filters."
+  }
+}
